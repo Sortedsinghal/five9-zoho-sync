@@ -581,7 +581,7 @@ return records;
 // 🔁 POLLING LOOP
 // =======================
 let isPolling = false;
-loadSyncState();
+
 setInterval(async () => {
 
     if (isPolling) {
@@ -626,11 +626,17 @@ setInterval(async () => {
     }
 
 }, 2 * 60 * 1000);
+
 // =======================
 // 🚀 START SERVER
 // =======================
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 API running on port ${PORT}`);
-});
+if (require.main === module) {
+    loadSyncState();
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`🚀 API running on port ${PORT}`);
+    });
+}
+
+module.exports = { app, normalizeLanguage };
