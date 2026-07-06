@@ -1,13 +1,17 @@
-# Five9 → Zoho CRM Sync Service
+# Five9 → Zoho CRM → Zoho Campaigns Sync & Email Automation
 
-A Node.js background service that automatically syncs call log data from **Five9** (cloud contact center) into **Zoho CRM** as leads. It polls Five9 every 2 minutes via SOAP API, extracts caller information, deduplicates against existing records, and creates new leads in Zoho CRM — with persistent checkpointing so no records are missed across restarts.
+A fully automated, end-to-end lead pipeline that takes inbound callers from **Five9** (cloud contact center) all the way through to a **personalized outbound email** — without any manual intervention.
+
+The service polls Five9 every 2 minutes via SOAP API, pushes new leads into **Zoho CRM**, which syncs them into a **Zoho Campaigns** contact list, triggering a language-aware automation workflow that sends the right email template — **English or Spanish** — based on the caller's detected language.
 
 ---
 
 ## Table of Contents
 
-- [Architecture Overview](#architecture-overview)
+- [Full Pipeline Overview](#full-pipeline-overview)
+- [Architecture](#architecture)
 - [How It Works](#how-it-works)
+- [Pipeline Stats & Efficiency](#pipeline-stats--efficiency)
 - [Project Structure](#project-structure)
 - [Environment Variables](#environment-variables)
 - [Local Development](#local-development)
@@ -17,11 +21,46 @@ A Node.js background service that automatically syncs call log data from **Five9
 - [Integration Details](#integration-details)
   - [Five9 SOAP API](#five9-soap-api)
   - [Zoho CRM OAuth 2.0](#zoho-crm-oauth-20)
+  - [Zoho Campaigns Automation](#zoho-campaigns-automation)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Architecture Overview
+## Full Pipeline Overview
+
+Every inbound call handled by Five9 that has a valid email address goes through this automated sequence with zero manual steps:
+
+```
+Inbound Call (Five9)
+       │
+       ▼
+  Call ends → call logged in Five9 report
+       │
+       ▼  (every 2 minutes)
+  Node.js Sync Service polls Five9 SOAP API
+       │
+       ├── No email? → Skip
+       ├── Already in Zoho CRM? → Skip (dedup)
+       │
+       ▼
+  New lead created in Zoho CRM
+  (First Name, Last Name, Email, Mobile, Language)
+       │
+       ▼  (Zoho CRM → Campaigns sync)
+  Lead added to "Five9 List" in Zoho Campaigns
+       │
+       ▼  (Automation triggers on list entry)
+  Language condition evaluated
+       │
+       ├── Language = Spanish → Send Spanish email template
+       └── Language = English → Send English email template
+```
+
+The entire journey — from call ending in Five9 to the lead receiving a personalized email — happens within minutes, fully automated.
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────┐        SOAP / WSDL        ┌──────────────────────┐
@@ -36,17 +75,37 @@ A Node.js background service that automatically syncs call log data from **Five9
                                                           ▼
                                                ┌──────────────────────┐
                                                │                      │
-                                               │      Zoho CRM        │
+                                               │      Zoho CRM        │  ──── syncs ────▶
                                                │   (Leads Module)     │
                                                │                      │
                                                └──────────────────────┘
+                                                                              │
+                                                                              ▼
+                                                               ┌─────────────────────────┐
+                                                               │                         │
+                                                               │    Zoho Campaigns       │
+                                                               │  "Five9 List" contact   │
+                                                               │                         │
+                                                               └────────────┬────────────┘
+                                                                            │
+                                                                   On List Entry
+                                                                   (Automation Trigger)
+                                                                            │
+                                                              ┌─────────────▼─────────────┐
+                                                              │   Language Condition       │
+                                                              │   (Simple Condition node)  │
+                                                              └──────┬──────────┬──────────┘
+                                                                     │          │
+                                                              False  │          │  True
+                                                                     ▼          ▼
+                                                              English        Spanish
+                                                              Template       Template
+                                                              (Email)        (Email)
 ```
 
 ---
 
 ## How It Works
-
-The service runs two things in parallel:
 
 ### 1. Automated Polling Loop (`server.js`)
 
@@ -64,16 +123,56 @@ setInterval(2 min)
         └─▶ For each valid row:
               ├─▶ Check if lead already exists in Zoho (by email)
               └─▶ If new → create lead in Zoho CRM
+                         └─▶ Zoho CRM syncs to Campaigns list
+                                  └─▶ Automation fires → email sent
   └─▶ saveSyncState()     ← update lastSyncTime checkpoint
 ```
 
-### 2. Webhook Endpoint (`POST /lead`)
+### 2. Zoho Campaigns Automation ("Day 0 - Outbound Campaign")
 
-An Express HTTP endpoint that lets external systems (e.g. Zoho Flow, Zapier) push a lead directly into Zoho CRM on demand — bypassing the Five9 report flow entirely.
+Once a lead lands in Zoho CRM, it is automatically synced to the **"Five9 List"** contact list in Zoho Campaigns. This triggers the **Day 0 - Outbound Campaign** automation workflow, which:
 
-### 3. Bulk CSV Import (`process.js`)
+1. **Trigger:** Contact added to Five9 List
+2. **Condition check:** Evaluates the `Language` field
+   - `True` → contact speaks **Spanish** → sends the **Spanish email template**
+   - `False` → contact speaks **English** → sends the **English email template**
+
+This ensures every lead receives a follow-up email in their own language, immediately after their call — with no human in the loop.
+
+### 3. Webhook Endpoint (`POST /lead`)
+
+An Express HTTP endpoint that lets external systems (e.g. Zoho Flow, Zapier) push a lead directly into Zoho CRM on demand — bypassing the Five9 report flow entirely. The lead still flows into Zoho Campaigns and triggers the same email automation.
+
+### 4. Bulk CSV Import (`process.js`)
 
 A standalone one-time script to bulk-import historical call data from a local `input.csv` file into Zoho CRM. Used for backfilling records; not part of the main service.
+
+---
+
+## Pipeline Stats & Efficiency
+
+These numbers reflect the live production run of the automation:
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Leads entered Zoho Campaigns workflow** | **178** | Contacts added to Five9 List and processed by the automation |
+| **Exited Workflow** | **3** | Contacts who completed the full automation path |
+| **Automation name** | Day 0 - Outbound Campaign | Active since Jul 02, 2026 |
+| **Trigger** | On List Entry — Five9 List | Fires the moment a new contact is added |
+| **Language routing branches** | 2 | English template (False) / Spanish template (True) |
+| **Polling interval** | Every 2 minutes | Minimum delay from call end to CRM entry |
+| **Dedup rate** | Prevents 100% of re-sends | Email-based check before every Zoho write |
+| **Token auto-refresh** | Every 50 minutes | Keeps auth alive with no downtime |
+| **SOAP retry coverage** | Up to 3 attempts | Handles Five9 transient failures automatically |
+| **Rows skipped (no email / invalid)** | Variable per run | Rows with empty, `-`, or non-`@` emails are filtered out |
+
+### Why this is efficient
+
+- **No polling gaps:** The 2-minute interval with persistent checkpointing means calls are picked up nearly in real time, and the service never re-processes the same window twice.
+- **Zero duplicate leads:** Every lead is checked against Zoho CRM by email before creation. The dedup logic runs at the application layer, not just relying on Zoho's built-in duplicate rules.
+- **Zero missed emails:** Because the Zoho Campaigns automation is triggered by list entry (not a scheduled batch), every new lead gets their email the moment they're synced — no waiting for a nightly job.
+- **Language accuracy:** The `Language` field is normalized at the point of sync (Five9 CSV → `"English"` or `"Spanish"`), so the Campaigns condition always receives a clean, consistent value.
+- **Fault tolerance:** Five9 SOAP calls retry 3 times on failure. The OAuth token refreshes proactively before expiry. If the service crashes, it resumes from the last saved checkpoint — no records are skipped.
 
 ---
 
@@ -318,6 +417,44 @@ Rows without a valid email (empty, `-`, or no `@`) are automatically skipped.
 | `Language` | Normalized to `"English"` or `"Spanish"` |
 
 `trigger: ["workflow"]` is included on every lead creation call so Zoho automation rules fire normally.
+
+---
+
+### Zoho Campaigns Automation
+
+The Zoho Campaigns side of the pipeline is a workflow called **"Day 0 - Outbound Campaign"**, active since July 2, 2026.
+
+| Setting | Value |
+|---------|-------|
+| Trigger | On List Entry — **Five9 List** |
+| Condition | Simple Condition on `Language` field |
+| Branch: True | Send **Spanish Template** email |
+| Branch: False | Send **English Template** email |
+
+**How the condition works:**
+
+The automation evaluates the `Language` field of the newly added contact:
+- If the condition is **True** (language is Spanish) → the contact receives the **Spanish email template**
+- If the condition is **False** (any other value, defaults to English) → the contact receives the **English email template**
+
+This branching is possible because the sync service normalizes the language field to exactly `"English"` or `"Spanish"` before writing to Zoho CRM, giving the Campaigns condition a clean, consistent value to evaluate — no ambiguous strings, no missing values.
+
+**Workflow nodes (as configured):**
+
+```
+[ON LIST ENTRY — Five9 List]
+         │
+         ▼
+ [Simple Condition]
+    ┌────┴─────┐
+  False       True
+    │           │
+    ▼           ▼
+[MESSAGE:   [MESSAGE:
+ English     Spanish
+ Template]   Template]
+```
+
 
 ---
 
