@@ -155,7 +155,7 @@ These numbers reflect the live production run of the automation:
 
 ## Pipeline Impact & Efficiency
 
-> Numbers based on the live production run of the automation (active since July 2, 2026).
+> This is a **live, 24/7 production system** processing inbound call leads around the clock for a real company. The numbers below are as of early July 2026 and grow continuously — leads come in day and night with no manual involvement at any stage.
 
 ### Automation Impact
 
@@ -166,7 +166,7 @@ These numbers reflect the live production run of the automation:
 | **Manual CRM data entry** | 100% manual per lead | 0% manual | **↓ 100% elimination of manual entry** |
 | **Lead routing errors** | Prone to wrong template/language | Fully normalized at sync | **↓ 100% reduction in routing errors** |
 | **Duplicate leads in CRM** | No systematic dedup | Email-based dedup before every write | **↓ 100% duplicate prevention** |
-| **Leads processed automatically** | 0 | **178 leads** pushed through pipeline | **↑ 178 leads handled with zero human effort** |
+| **Leads processed automatically** | 0 | **178+ leads** (and growing 24/7) | **↑ Every inbound call lead handled with zero human effort** |
 | **Email personalization coverage** | 0% (generic template or none) | 100% (language-matched template) | **↑ 100% of leads receive correct language email** |
 
 ### System Reliability
@@ -184,7 +184,7 @@ These numbers reflect the live production run of the automation:
 - **97–99% time reduction** is based on comparing the 2-minute automated poll cycle against a realistic 4–8 hour window for a human to manually export Five9 data, clean it, and enter leads into Zoho CRM — a common pattern in teams that haven't automated this.
 - **100% duplicate prevention** is enforced at two layers: application-level email lookup (`GET /crm/v2/Leads/search`) before every write, and Zoho CRM's own dedup rules. Both must pass for a record to be created.
 - **100% routing accuracy** comes from language normalization at the point of sync. The Five9 CSV value (which can vary in casing or format) is always resolved to exactly `"English"` or `"Spanish"` before hitting Zoho — the Campaigns condition never receives a dirty or ambiguous value.
-- **178 leads** entered the Zoho Campaigns workflow automation with no manual action at any point in the pipeline.
+- **178+ leads (and counting)** have been pushed through the full pipeline — Five9 → Zoho CRM → Zoho Campaigns → personalized email — with no manual action at any point. The system runs continuously and picks up new calls every 2 minutes, day and night.
 
 ---
 
