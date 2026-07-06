@@ -1,0 +1,25 @@
+# Environment variables (contains secrets)
+.env
+
+# Node modules
+node_modules/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Large data / cache files
+input.csv
+AdminWebService.wsdl
+five9_wsdl_cache.xml
+
+# Archives
+Archive.zip
+
+# Backup/copy files
+server_copy.js
+
+# Logs
+*.log
+npm-debug.log*
