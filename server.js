@@ -180,7 +180,8 @@ async function sendLeadToZoho({
     phone,
     actionStepId,
     campaign,
-    lastDisposition
+    lastDisposition,
+    allowUpdate = true
 }) {
 
     try {
@@ -191,6 +192,13 @@ async function sendLeadToZoho({
         // 🔍 CHECK EXISTING LEAD
         // =======================
         const existingLead = await getZohoLeadByEmail(email);
+
+        if (existingLead && existingLead.id && !allowUpdate) {
+            console.log(
+                `⏭️ Lead already exists in Zoho: ${email} (skipping update during hourly run)`
+            );
+            return;
+        }
 
         const leadData = {
             First_Name:
@@ -390,7 +398,7 @@ function saveSyncState() {
 // =======================
 // 🔄 FETCH FIVE9 REPORT
 // =======================
-async function fetchFive9Report() {
+async function fetchFive9Report({ allowUpdate = true } = {}) {
     try {
 
         console.log("🔐 Using Five9 user:", FIVE9_USERNAME);
@@ -573,7 +581,8 @@ async function fetchFive9Report() {
                 phone,
                 actionStepId,
                 campaign,
-                lastDisposition
+                lastDisposition,
+                allowUpdate
             });
 
             records.push({
@@ -622,49 +631,47 @@ async function fetchFive9Report() {
     }
 }
 // =======================
-// 🔁 SCHEDULING LOGIC
+// 🔁 DUAL SCHEDULING LOGIC
 // =======================
 let isPolling = false;
 
-async function runSyncCycle() {
+async function runSyncCycle(allowUpdate = true) {
     if (isPolling) {
-        console.log("⚠️ Previous polling still running");
+        console.log("⚠️ Previous sync still running");
         return;
     }
 
     isPolling = true;
 
     try {
-        console.log("🔄 Running scheduled Five9 sync...");
-        const records = await fetchFive9Report();
+        const modeText = allowUpdate ? "DAILY FULL UPDATE (9:05 PM PST)" : "HOURLY NEW CONTACTS ONLY";
+        console.log(`🔄 Running Five9 sync [${modeText}]...`);
+        const records = await fetchFive9Report({ allowUpdate });
 
         if (records.length > 0) {
-            console.log(`✅ ${records.length} leads synced`);
+            console.log(`✅ ${records.length} leads processed`);
         } else {
-            console.log("ℹ️ No records");
+            console.log("ℹ️ No records returned");
         }
 
     } catch (err) {
-        console.log("❌ Polling Error:", err.message);
+        console.log("❌ Sync Error:", err.message);
 
     } finally {
         isPolling = false;
     }
 }
 
-function scheduleNextRun() {
-    const pollMinutes = process.env.POLL_INTERVAL_MINUTES;
+function scheduleHourlyRun() {
+    const hourlyMinutes = parseInt(process.env.HOURLY_SYNC_MINUTES || "60", 10);
+    const ms = hourlyMinutes * 60 * 1000;
+    console.log(`⏱️ Scheduled hourly new contacts sync (every ${hourlyMinutes} minutes)`);
+    setInterval(async () => {
+        await runSyncCycle(false); // allowUpdate = false (create NEW contacts only)
+    }, ms);
+}
 
-    if (pollMinutes && !isNaN(parseInt(pollMinutes, 10))) {
-        const ms = parseInt(pollMinutes, 10) * 60 * 1000;
-        console.log(`⏱️ Scheduled next poll in ${pollMinutes} minutes`);
-        setTimeout(async () => {
-            await runSyncCycle();
-            scheduleNextRun();
-        }, ms);
-        return;
-    }
-
+function scheduleDailyRun() {
     const targetHourPST = parseInt(process.env.SCHEDULE_HOUR_PST || "21", 10);
     const targetMinPST  = parseInt(process.env.SCHEDULE_MIN_PST || "5", 10);
 
@@ -682,11 +689,11 @@ function scheduleNextRun() {
     const msUntilNextRun = nextRunPST.getTime() - pstDate.getTime();
     const hoursUntil = (msUntilNextRun / (1000 * 60 * 60)).toFixed(2);
 
-    console.log(`📅 Scheduled next daily sync at 9:05 PM PST (in ~${hoursUntil} hours)`);
+    console.log(`📅 Scheduled daily full update at 9:05 PM PST (in ~${hoursUntil} hours)`);
 
     setTimeout(async () => {
-        await runSyncCycle();
-        scheduleNextRun();
+        await runSyncCycle(true); // allowUpdate = true (update ALL contacts)
+        scheduleDailyRun();
     }, msUntilNextRun);
 }
 
@@ -699,7 +706,8 @@ if (require.main === module) {
     loadSyncState();
     app.listen(PORT, "0.0.0.0", () => {
         console.log(`🚀 API running on port ${PORT}`);
-        scheduleNextRun();
+        scheduleHourlyRun();
+        scheduleDailyRun();
     });
 }
 

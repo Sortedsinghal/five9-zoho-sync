@@ -136,4 +136,29 @@ describe("sendLeadToZoho() with report fields", () => {
       [lastDispField]: "Transferred"
     });
   });
+
+  test("skips updating existing lead when allowUpdate is false (hourly run)", async () => {
+    axios.post.mockResolvedValueOnce({
+      data: { access_token: "mock_token" }
+    });
+
+    axios.get.mockResolvedValueOnce({
+      data: { data: [{ id: "existing_123", Email: "existing@example.com" }] }
+    });
+
+    await sendLeadToZoho({
+      email: "existing@example.com",
+      firstName: "Jane",
+      lastName: "Doe",
+      language: "Spanish",
+      phone: "1234567890",
+      actionStepId: "STEP_987",
+      campaign: "IB - LFECR",
+      lastDisposition: "Transferred",
+      allowUpdate: false
+    });
+
+    // Should not issue any PUT request to update Leads module
+    expect(axios.put).not.toHaveBeenCalled();
+  });
 });
