@@ -656,6 +656,10 @@ function scheduleHourlyRun() {
     const hourlyMinutes = parseInt(process.env.HOURLY_SYNC_MINUTES || "60", 10);
     const ms = hourlyMinutes * 60 * 1000;
     console.log(`⏱️ Scheduled hourly new contacts sync (every ${hourlyMinutes} minutes)`);
+    
+    // Run initial hourly check immediately on startup
+    runSyncCycle(false);
+
     setInterval(async () => {
         await runSyncCycle(false); // allowUpdate = false (create NEW contacts only)
     }, ms);
