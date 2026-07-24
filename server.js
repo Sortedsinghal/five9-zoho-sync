@@ -385,6 +385,15 @@ function saveSyncState() {
     }
 }
 
+function cleanFieldValue(val) {
+    if (!val) return "";
+    const trimmed = String(val).trim();
+    if (trimmed === "[None]" || trimmed === "None" || trimmed === "[none]" || trimmed === "none" || trimmed === "null") {
+        return "";
+    }
+    return trimmed;
+}
+
 // =======================
 // 🔄 FETCH FIVE9 REPORT
 // =======================
@@ -549,12 +558,9 @@ async function fetchFive9Report({ allowUpdate = true } = {}) {
             const language =
                 (row.Language || "English").trim();
 
-            const actionStepId =
-                (row.ActionStepID || row.actionstepid || row.Action_Step_ID || "").trim();
-            const campaign =
-                (row.CAMPAIGN || row.campaign || row.Campaign || "").trim();
-            const lastDisposition =
-                (row["Last Disposition"] || row["LAST DISPOSITION"] || row.DISPOSITION || row.disposition || "").trim();
+            const actionStepId = cleanFieldValue(row.ActionStepID || row.actionstepid || row.Action_Step_ID);
+            const campaign = cleanFieldValue(row.CAMPAIGN || row.campaign || row.Campaign);
+            const lastDisposition = cleanFieldValue(row["Last Disposition"] || row["LAST DISPOSITION"] || row.DISPOSITION || row.disposition);
 
             console.log(
                 `✅ Found lead: ${email} | ${firstName} ${lastName} | ${phone} | ${language} | ActionStepID: ${actionStepId} | Campaign: ${campaign} | Last Disposition: ${lastDisposition}`
